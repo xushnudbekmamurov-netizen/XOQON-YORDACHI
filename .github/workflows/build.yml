@@ -13,89 +13,12 @@ jobs:
         with:
           gradle-version: 8.7
       - run: |
-          unzip -q Xoqon.zip
+          Z=$(ls x[0-9][0-9].zip | sort | tail -1)
+          echo "Zip: $Z"
+          unzip -q $Z
           curl -L -o m.zip https://alphacephei.com/vosk/models/vosk-model-small-uz-0.22.zip
           unzip -q m.zip
           cp -r vosk-model-small-uz-0.22/* Xoqon/app/src/main/assets/model-uz/
-          D=Xoqon/app/src/main/java/com/xoqon/app
-          sed -i 's|JSONObject(json).optString(key).lowercase()|Commands.norm(JSONObject(json).optString(key))|; s|val w = wake.firstOrNull { t.contains(it) }|val w = (wake + Commands.extraWake).firstOrNull { t.contains(it) }|; s|private fun key(s: String) = .*|private fun key(s: String) = Commands.isCommand(s)|' $D/WakeService.kt
-          cat > $D/Commands.kt <<'EOF'
-          package com.xoqon.app
-
-          import android.content.Context
-          import android.content.Intent
-          import android.provider.AlarmClock
-          import android.widget.Toast
-
-          object Commands {
-              val extraWake = listOf("yolg'on", "yolgon", "yolg'an", "xolgon", "xolqon", "qo'qon", "qoqon", "qo'qan", "hoqon", "xoqon")
-              private val verbs = listOf("budilnik", "uyg'ot", "ishga tushir", "och", "kir")
-              private val stop = setOf("och", "ochib", "ber", "kir", "ishga", "tushir", "ilova", "ilovasi", "ilovasini", "ilovasiga", "ga", "ni", "ni", "bor")
-              private val alias = mapOf(
-                  "xabarlar" to listOf("xabarlar", "messages", "message", "sms"),
-                  "pabji" to listOf("pubg"), "pubji" to listOf("pubg"), "yutub" to listOf("youtube"),
-                  "kamera" to listOf("camera", "kamera"), "sozlamalar" to listOf("settings", "sozlamalar"),
-                  "telefon" to listOf("phone", "telefon"), "galereya" to listOf("gallery", "galereya", "photos"),
-                  "xrom" to listOf("chrome"), "brauzer" to listOf("chrome", "brave", "browser")
-              )
-              private val nums = mapOf("bir" to 1, "ikki" to 2, "uch" to 3, "to'rt" to 4, "besh" to 5, "olti" to 6,
-                  "yetti" to 7, "sakkiz" to 8, "to'qqiz" to 9, "o'n" to 10)
-
-              fun norm(s: String) = s.lowercase().replace("ʻ", "'").replace("’", "'").replace("‘", "'").replace("`", "'")
-              fun isCommand(s: String) = norm(s).let { t -> verbs.any { t.contains(it) } }
-
-              fun run(c: Context, raw: String) {
-                  val t = norm(raw)
-                  when {
-                      t.contains("budilnik") || t.contains("uyg'ot") -> alarm(c, t)
-                      t.contains("och") || t.contains("kir") || t.contains("ishga tushir") -> openApp(c, t)
-                      else -> Toast.makeText(c, "Buyruq tushunilmadi: $t", Toast.LENGTH_LONG).show()
-                  }
-              }
-
-              private fun alarm(c: Context, t: String) {
-                  var h = -1; var m = 0
-                  val full = Regex("(\\d{1,2})\\D+(\\d{2})").find(t)
-                  if (full != null) { h = full.groupValues[1].toInt(); m = full.groupValues[2].toInt() }
-                  else {
-                      val one = Regex("(\\d{1,2})").find(t)
-                      if (one != null) h = one.groupValues[1].toInt()
-                      else t.split(" ").forEach { w -> nums[w]?.let { h = it } }
-                  }
-                  if (h < 0) { Toast.makeText(c, "Soat topilmadi: $t", Toast.LENGTH_LONG).show(); return }
-                  if ((t.contains("kech") || t.contains("tush")) && h < 12) h += 12
-                  try {
-                      c.startActivity(Intent(AlarmClock.ACTION_SET_ALARM).apply {
-                          putExtra(AlarmClock.EXTRA_HOUR, h); putExtra(AlarmClock.EXTRA_MINUTES, m)
-                          putExtra(AlarmClock.EXTRA_MESSAGE, "Xoqon"); putExtra(AlarmClock.EXTRA_SKIP_UI, true)
-                          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                      })
-                      Toast.makeText(c, "Budilnik: $h:${m.toString().padStart(2, '0')}", Toast.LENGTH_LONG).show()
-                  } catch (e: Exception) { Toast.makeText(c, "Budilnik xatosi: ${e.message}", Toast.LENGTH_LONG).show() }
-              }
-
-              private fun openApp(c: Context, t: String) {
-                  val words = t.split(" ").filter { it.isNotBlank() && it !in stop }.map {
-                      if (it.length > 5 && (it.endsWith("ga") || it.endsWith("ni"))) it.dropLast(2) else it
-                  }
-                  val name = words.joinToString(" ")
-                  if (name.isEmpty()) { Toast.makeText(c, "Ilova nomi aytilmadi", Toast.LENGTH_LONG).show(); return }
-                  val cands = (alias[name] ?: emptyList()) + name
-                  val pm = c.packageManager
-                  val apps = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-                  val hit = apps.firstOrNull { a ->
-                      val l = norm(a.loadLabel(pm).toString())
-                      cands.any { l.contains(it) || it.contains(l) }
-                  }
-                  if (hit == null) { Toast.makeText(c, "Ilova topilmadi: $name", Toast.LENGTH_LONG).show(); return }
-                  try {
-                      val i = pm.getLaunchIntentForPackage(hit.activityInfo.packageName)!!
-                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                      c.startActivity(i)
-                  } catch (e: Exception) { Toast.makeText(c, "Ochilmadi: ${e.message}", Toast.LENGTH_LONG).show() }
-              }
-          }
-          EOF
       - run: gradle -p Xoqon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
